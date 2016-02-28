@@ -1,0 +1,132 @@
+---
+title: "Quantify quality of activity - Machine Learning course project"
+author: "Venki Venkatesh"
+date: "February 25, 2016"
+output: html_document
+---
+####Introduction####
+
+Human Activity Recognition is very popular of late. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, the goal will be to use data from accelerometers on the belt, forearm, arm, and dumbbell of 6 participants. Participants were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: [link](http://groupware.les.inf.puc-rio.br/har) (see the section on the Weight Lifting Exercise Dataset).
+
+The goal of course project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. One may use any of the other variables to predict with. This report describes  how the model was built, how cross validation was used, provides estimate of expected out of sample error is, and how the choices were made. Finally the prediction model is used to predict 20 different test cases for submission.
+
+####Outline of Approach####
+
+The outline of the approach is as follows:
+1. Input the training and test data
+2. Pick the features
+3. Perform cross-validation to pick prediction algorithm/features
+4. Build Model and estimate error
+5. Submit for final test
+
+####Input data####
+
+Input both the training and final test data to get started.
+```{r}
+library(caret); library(gbm); library(glmnet)
+
+set.seed(3523)
+
+# ---- Read training and final test data -----
+tData <- read.csv("./pml-training.csv", na.strings=c("","NA"))
+test <- read.csv("./pml-testing.csv", na.strings=c("","NA"))
+```
+
+####Select features####
+
+A close examination of the features reveals a number of features with 'NA' predominantly. These are best eliminated. Also the first few columns record username and other such which don't contribute to the prediction model. The R code below skips these features and pick out the rest as the features to keep.
+```{r}
+# ---- Select features -----
+# Eliminate feature that have NA, and first few columns with irrelavant info
+# Accumulate all columns/features numbers which are ALL NA
+naAnyColsTData <- vector()
+for( i in 1:ncol(tData)) {
+  t.na <- is.na(tData[,i])
+  if (sum(t.na) != 0) naAnyColsTData <- c(naAnyColsTData, i)
+}
+# Accumulate all columns/feature numbers to SKIP, and KEEP
+nouseColsTData <- c(1:6) # usernames and such cols
+skipColsTData <- c(nouseColsTData,naAnyColsTData, 160) # also skip classe outcome var
+
+keepColsTData <- vector()
+for (i in 1:ncol(tData)) {
+  if (!(i %in% skipColsTData)) {
+    keepColsTData <- c(keepColsTData,i)
+  }
+}
+# create list of colNames/featues to KEEP [feature list creation]
+keepColNames <- vector()
+for (i in keepColsTData) {
+  keepColNames <- c(keepColNames, colnames(tData)[i])
+}
+
+# Put formula together with features to keep
+fmla <- as.formula(paste("classe ~ ", paste(keepColNames, collapse= "+")))
+
+print(keepColNames)
+```
+
+####Cross-validation to pick prediction algorthim/refine features####
+
+Cross validation was performed to pick the right algorithm. Features were not refined as the original set seemed alright. Using nearZeroVar() function showed none of them suffered from lack of variability.
+
+The algorithms considered were:
+1. rf - random forests
+2. gbm - boosted trees
+3. lda - linear discriminant analysis
+4. glmnet - regularized regression [lasso/ridge]
+5. nb - naive Bayes
+6. comb5 - combine/stack all above 5 algos/models
+7. comb2 - combine/stack rf & gbm models
+
+k-fold cross-validation was performed with k=3. The R-code is not included as it will cause the report to get too lengthy. Shown below are the results of the cross-validation for the 7 algorithms considered, and the estimated accuracy/out of sample error. The average of the 3 iterations corresponding to the folds estimates the accuracy/out of sample error. The accuracy which is a measure (complement) of the error is shown below.
+
+```{r}
+# > ansTab
+# Iter        RF       GBM       LDA    GLMNET        NB     COMB5     COMB2
+# 1    0.9954144 0.9869226 0.7180707 0.7501698 0.7564538 0.9964334 0.9960938
+# 2    0.9989810 0.9864130 0.7201087 0.7477921 0.7574728 0.9993207 0.9989810
+# 3    0.9964322 0.9830105 0.7035338 0.7473666 0.7536527 0.9969419 0.9964322
+# -----------------------------------------------------------------------------
+# mean 0.9969000 0.9854000 0.7139000 0.7484000 0.7559000 0.9976000 0.9972000
+```
+
+Based on the accuracies seem in above table, it was decided to select the **random forest** algorithm as the final model. One could have used the ensemble/stack model combining all five algorithms but it seems to be a fair amount of effort with small gains in accuracy.
+
+####Build Model, estimate error####
+
+Having picked the features and finalized the algorithm the final model was built by splitting the training set into trainingFinal and testingFinal data sets. The model was built with the traningFinal data set and checked one last time on the testingFinal data set. One could have used anyone of the rf models built during the k-fold (k=3) cross-validation but it made more sense to build the final model with a larger training data set; hence this approach.
+```{r}
+# ---- Split the data in trainingFinal and testingFinal
+#       to build and check final model ---------
+
+inTrain <- createDataPartition(y=tData$classe, p=.7, list=FALSE)
+testingFinal <- tData[-inTrain,]
+trainingFinal <- tData[inTrain,]
+
+# ==== Build Final Model [based on experience from cross-validation] =====
+# *** USE RANDOM FORESTS ***
+#
+set.seed(3433)
+
+rfFit <- train(fmla, method = "rf", data = trainingFinal)
+predRF <- predict(rfFit, testingFinal)
+
+accRF <- mean(predRF == testingFinal$classe)
+error <- 1 - accRF
+
+sprintf("RF Accuracy = %0.4f\n", accRF)
+sprintf("Out of sample Error = %0.4f\n", error)
+```
+
+The out of sample error estimated seems quite good. The error estimated with cross-validation is likely to be a better estimate which was also good for random forest method.
+
+####Submit for final test####
+
+The prediction model was applied to the final test data provided. The prediction results are shown below.
+````{r}
+# ======= PREDICT USING FINAL MODEL on Test (outcome classe not stored) =====
+predRF <- predict(rfFit, test)
+print(predRF)
+```
+
