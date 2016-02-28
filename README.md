@@ -1,3 +1,6 @@
-# MachineLearningCourse
-Repo to hold project submittted for Coursera Machine Learning Class
-First commit
+### MachineLearningCourse
+Repo to hold project submitted for Coursera Practical Machine Learning Class
+
+**PLEASE NOTE:**
+
+To view the html file please go to [link](http://venki2404.github.io/MachineLearningCourse)
